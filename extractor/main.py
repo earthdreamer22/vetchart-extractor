@@ -70,14 +70,15 @@ def connect_interactive() -> engines.Engine:
     if kind == "firebird_file":
         path = item.get("path") or ask("FDB 파일 경로")
         host = ask("Firebird 서버 주소 (이 PC면 그대로)", "localhost")
-        for user, pw in (("SYSDBA", "masterkey"),):
+        # 병원이 아는 계정 또는 Firebird 설치 기본 계정으로만 접속한다 (비밀번호를 풀거나 보호 장치를 우회하지 않음)
+        if ask("Firebird 설치 기본 계정(SYSDBA)으로 접속해 볼까요? (예 Y · 아니요 N)", "Y").strip().lower() in ("", "y", "yes", "예"):
             try:
-                e = engines.Firebird(host, path, user, pw)
+                e = engines.Firebird(host, path, "SYSDBA", "masterkey")
                 say("  기본 계정으로 접속했습니다")
                 return e
             except Exception:
-                pass
-        say("  기본 계정으로 접속하지 못했습니다. 차트 업체가 정한 계정이 있으면 입력하세요 (저장하지 않습니다)")
+                say("  기본 계정으로 접속하지 못했습니다.")
+        say("  병원이 알고 있는 계정을 입력하세요 (저장하지 않습니다). 모르면 차트 회사에 계정이나 내보내기 파일을 요청해 주세요")
         return engines.Firebird(host, path, ask("사용자", "SYSDBA"), getpass.getpass("비밀번호: "))
 
     if kind == "mssql":
