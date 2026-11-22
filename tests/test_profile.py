@@ -69,3 +69,27 @@ def test_small_integer_codes():
 
 def test_shape():
     assert shape("2026-11-03") == "####-##-##" and shape("초코 Choco") == "가가 AAAAA"
+
+
+def test_code_tables_and_code_columns_keep_no_values():
+    from extractor.profile import is_master_table
+    vals = ["PO"] * 300 + ["SC"] * 200
+    assert "\"PO\"" not in dump(profile_column("PL_GROUP", "VARCHAR", vals, allow_codes=False))
+    assert "\"PO\"" not in dump(profile_column("PLCODE", "VARCHAR", vals))        # 코드 칸
+    assert "\"PO\"" in dump(profile_column("PL_GROUP", "VARCHAR", vals))           # 진료 기록 표의 구분 값은 남김
+    for t in ("PLANLIST", "RX_CODE", "MEDICINE", "VACCINE", "dbo.DrugMaster", "약품목록"):
+        assert is_master_table(t), t
+    keys = {"foreign": [["charts", "patient_id", "patients", "id"], ["patients", "client_id", "clients", "id"],
+                        ["invoice_items", "service_item_id", "service_items", "id"]]}
+    assert not is_master_table("patients", keys) and not is_master_table("charts", keys)
+    assert is_master_table("clients", keys)
+
+
+def test_amounts_are_never_codes():
+    assert "code_values" not in profile_column("price", "INTEGER", [0] * 300 + [7000] * 200)["number"]
+    assert "code_values" not in profile_column("Q", "INTEGER", [0] * 300 + [7000] * 200)["number"]   # 99보다 큰 값
+
+
+def test_clinic_names_dropped():
+    out = dump(profile_column("PD_TREAT", "VARCHAR", ["행복동물병원"] * 480 + ["외부"] * 20))
+    assert "행복동물병원" not in out

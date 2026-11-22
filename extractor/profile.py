@@ -6,9 +6,11 @@
           숫자 크기의 자릿수 범위, 날짜의 연도 범위
 남기지 않는 것: 이름·전화번호·주소·진료 내용 같은 실제 값
 
-예외 — 코드 값: 종류가 아주 적고(20가지 이하) 값마다 여러 번(5번 이상) 나오며 짧은 값(20자 이하)이고,
+예외 — 코드 값: 종류가 아주 적고(30가지 이하) 값마다 여러 번(5번 이상) 나오며 짧은 값(20자 이하)이고,
                 이름·전화·주소·메모 같은 칸이 아니고, 전화·주민번호·이메일 모양이 아닐 때만
                 값과 개수를 남긴다 (예: 성별 'M'·'F', 종 'Canine'·'Feline', 상태 코드) — 변환 규칙에 꼭 필요해서
+코드표는 제외 — 처방·처치·약품·백신 목록 같은 '목록 표'(차트 회사가 만들었을 수 있는 자료)와
+                처방·처치 코드 칸은 코드 값도 남기지 않는다 (모양만). 남기는 것은 진료 기록 표의 상태·구분 값뿐
 """
 import math
 import re
@@ -38,8 +40,33 @@ VET_WORDS = {"고양이", "강아지", "고양", "기타", "미상", "모름", "
              "예약", "현금", "카드", "이체", "미수", "중성화", "수컷", "암컷", "유기", "보호", "사망", "전원", "신규", "재진"}
 
 
+CLINIC_NAME = re.compile(r"(병원|의원|클리닉|센터|clinic|hospital|center)\s*$", re.I)
+
+
 def looks_like_person_name(v: str) -> bool:
+    """사람 이름 또는 병원 이름처럼 생긴 값"""
+    if CLINIC_NAME.search(v):
+        return True
     return bool(re.fullmatch(r"[가-힣]{2,4}", v)) and v[0] in SURNAMES and v not in VET_WORDS
+
+# 목록 표(코드표·마스터) 이름 — 이런 표는 코드 값을 남기지 않는다
+MASTER_TABLE = re.compile(
+    r"(code|_cd|cd_|^cd|master|mst|list|item|drug|medi|vaccine|product|prod|price|fee|suga|template|preset|kind|"
+    r"코드|목록|약품|품목|수가|백신|템플릿)", re.I)
+# 처방·처치·약품 코드 칸 — 진료 기록 표에 있어도 코드 값을 남기지 않는다
+CODE_COLUMN = re.compile(r"(code|_cd|cd_|^cd|cd$|item|drug|medi|prod|plid|rxid|코드|약품|품목)", re.I)
+
+
+def is_master_table(table: str, keys: dict | None = None) -> bool:
+    """코드표·목록 표인지 — 이름이 목록처럼 생겼거나, 다른 표가 가리키는데 자기는 아무 표도 가리키지 않는 표"""
+    base = table.split(".")[-1]
+    if MASTER_TABLE.search(base):
+        return True
+    fks = (keys or {}).get("foreign") or []
+    referenced = any(len(f) >= 3 and f[2] == table for f in fks)
+    refers = any(len(f) >= 3 and f[0] == table for f in fks)
+    return referenced and not refers
+
 
 SAMPLE_ROWS = 500
 MIN_CODE_COUNT = 5     # 코드 값으로 남기려면 표본에서 이만큼 이상 나와야 함
@@ -79,8 +106,9 @@ def magnitude(x: float) -> str:
     return f"{sign}<1" if d < 0 else f"{sign}10^{d}"
 
 
-def profile_column(name: str, sql_type: str, values: list) -> dict:
-    """값 목록(표본)에서 모양만 뽑는다"""
+def profile_column(name: str, sql_type: str, values: list, allow_codes: bool = True) -> dict:
+    """값 목록(표본)에서 모양만 뽑는다. allow_codes=False(목록 표)면 코드 값도 남기지 않는다"""
+    allow_codes = allow_codes and not CODE_COLUMN.search(name)
     n = len(values)
     out = {"name": name, "type": sql_type, "sample": n}
     if n == 0:
@@ -102,7 +130,7 @@ def profile_column(name: str, sql_type: str, values: list) -> dict:
     if nums:
         out["number"] = {"ratio": round(len(nums) / len(present), 3), "min": magnitude(min(nums)), "max": magnitude(max(nums)),
                          "integer_ratio": round(sum(1 for x in nums if float(x).is_integer()) / len(nums), 3)}
-        codes = _numeric_codes(name, nums)
+        codes = _numeric_codes(name, nums) if allow_codes else None
         if codes:
             out["number"]["code_values"] = codes
 
@@ -133,7 +161,7 @@ def profile_column(name: str, sql_type: str, values: list) -> dict:
             looks = {k: round(sum(1 for t in filled if rx.search(t)) / len(filled), 3) for k, rx in RE.items()}
             info["looks_like"] = {k: v for k, v in looks.items() if v > 0}
             info["shapes"] = [s for s, _ in Counter(shape(t) for t in filled if len(t) <= 40).most_common(5)]
-            enum = _enum_values(name, filled, looks)
+            enum = _enum_values(name, filled, looks) if allow_codes else None
             if enum:
                 info["code_values"] = enum
         out["text"] = info
@@ -175,12 +203,15 @@ def _enum_values(col: str, filled: list, looks: dict):
     return out
 
 
+AMOUNT_NAME = re.compile(r"(price|amt|amount|cost|fee|pay|total|sum|tax|disc|money|won|금액|가격|단가|합계|할인|수납|결제|잔액)", re.I)
+
+
 def _numeric_codes(col: str, nums: list):
-    """작은 정수 코드(상태·구분 0/1/2 등) — 자주 나오는 값만"""
-    if SENSITIVE_NAME.search(col) or not nums or any(not float(x).is_integer() for x in nums):
+    """작은 정수 코드(상태·구분 0/1/2 등, 99 이하) — 자주 나오는 값만. 금액 칸은 남기지 않는다"""
+    if SENSITIVE_NAME.search(col) or AMOUNT_NAME.search(col) or not nums or any(not float(x).is_integer() for x in nums):
         return None
     c = Counter(int(x) for x in nums)
-    if len(c) > 10 or any(abs(v) > 9999 for v in c):
+    if len(c) > 10 or any(abs(v) > 99 for v in c):
         return None
     common = [[v, k] for v, k in c.most_common() if k >= MIN_CODE_COUNT]
     if not common or sum(k for _, k in common) < 0.8 * len(nums):

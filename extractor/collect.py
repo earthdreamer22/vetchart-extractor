@@ -5,7 +5,7 @@
 """
 import time
 
-from .profile import SAMPLE_ROWS, profile_column
+from .profile import SAMPLE_ROWS, is_master_table, profile_column
 
 
 def _err(out, engine, where, e):
@@ -30,7 +30,8 @@ def collect(engine, progress=print, sample_rows: int = SAMPLE_ROWS) -> dict:
         _err(out, engine, "키 읽기", e)
     for i, t in enumerate(tables, 1):
         progress(f"  [{i}/{len(tables)}] {t}")
-        item = {"name": t, "rows": None, "columns": []}
+        master = is_master_table(t, out["keys"])
+        item = {"name": t, "rows": None, "columns": [], "code_table": master}
         try:
             cols = engine.columns(t)
         except Exception as e:
@@ -52,7 +53,7 @@ def collect(engine, progress=print, sample_rows: int = SAMPLE_ROWS) -> dict:
             except Exception as e:
                 _err(out, engine, f"{t} 표본", e)
         for c in cols:
-            p = profile_column(c["name"], c["type"], values_by_col.get(c["name"], []))
+            p = profile_column(c["name"], c["type"], values_by_col.get(c["name"], []), allow_codes=not master)
             p.update({"nullable": c.get("nullable"), "length": c.get("length")})
             item["columns"].append(p)
         out["tables"].append(item)

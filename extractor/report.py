@@ -30,14 +30,14 @@ def preview_html(r: dict) -> str:
         "<div class='box'><b>이 파일에는 실제 값이 없습니다.</b> 표·칸 이름과 형식, 건수, 그리고 값의 '모양'"
         "(날짜·전화번호처럼 보이는 비율, 글 길이, <code>###-####</code> 같은 형식 틀)만 들어 있습니다. "
         "보호자 이름·전화번호·주소·진료 내용은 들어 있지 않습니다. "
-        "아래 '코드 값'만 실제 값인데, 성별·종·상태처럼 여러 번 반복되는 짧은 코드만 남깁니다.</div>",
+        "아래 '코드 값'만 실제 값인데, 진료 기록 표의 성별·종·상태처럼 여러 번 반복되는 짧은 코드만 남깁니다. 처방·처치·약품 같은 코드표는 값을 남기지 않습니다.</div>",
         f"<p>DB 종류: <b>{e(str(r.get('engine')))}</b> · 정보: {e(json.dumps(r.get('info', {}), ensure_ascii=False))} · "
         f"표 {len(r.get('tables', []))}개 · 만든 시각 {e(str(meta.get('created_at', '')))} · 프로그램 {e(str(meta.get('tool_version', '')))}</p>",
     ]
     if r.get("errors"):
         parts.append("<p>읽지 못한 부분: " + e(", ".join(r["errors"][:30])) + "</p>")
     for t in r.get("tables", []):
-        parts.append(f"<h3>{e(t['name'])} <small>({t.get('rows')}행)</small></h3><table>"
+        parts.append(f"<h3>{e(t['name'])} <small>({t.get('rows')}행{' · 코드표 — 값은 남기지 않음' if t.get('code_table') else ''})</small></h3><table>"
                      "<tr><th>칸</th><th>형식</th><th>비어 있음</th><th>모양</th><th>코드 값</th></tr>")
         for c in t.get("columns", []):
             txt = c.get("text") or {}
