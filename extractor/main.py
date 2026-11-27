@@ -2,18 +2,18 @@
 """VetChart 구조 정보 추출 프로그램 — 베타테스터용
 
 차트 서버 PC에서 실행 → DB를 읽기만 해서 구조와 '값의 모양'만 모은 파일을 바탕화면에 만든다
-→ 미리보기로 확인 → Gmail 쓰기 창을 열어 테스터가 직접 첨부해 보낸다 (프로그램이 혼자 보내지 않음)
+→ 미리보기로 확인 → 제출 양식(구글폼)과 파일 위치를 열어 병원이 직접 올린다 (프로그램이 혼자 보내지 않음)
+엑셀·CSV로 자료를 내보낼 수 있는 차트는 이 프로그램이 필요 없다 — VetChart 앱에서 그 파일로 바로 옮긴다.
 DB 비밀번호는 이 PC에서 접속에만 쓰고 저장하거나 보내지 않는다.
 """
 import getpass
 import os
 import sys
-import urllib.parse
 import webbrowser
 from datetime import datetime
 from pathlib import Path
 
-from . import RECIPIENT, TOOL_VERSION, engines
+from . import BETA_PAGE_URL, SUBMIT_FORM_URL, TOOL_VERSION, engines
 from .collect import collect
 from .detect import db_files, open_ports, services
 from .report import write
@@ -118,6 +118,10 @@ def main():
     say(" 보내는 파일에는 표·칸 이름, 형식, 건수, 값의 '모양'만 들어갑니다.")
     say(" 보호자 이름·전화번호·주소·진료 내용 같은 실제 값은 들어가지 않습니다.")
     say(" 진료가 끝난 뒤 실행하세요 (읽는 동안 차트가 잠깐 느려질 수 있습니다).")
+    say("")
+    say(" ※ 지금 차트에서 엑셀·CSV로 자료를 내보낼 수 있으면 이 프로그램은 필요 없습니다.")
+    say("   그 파일로 VetChart 앱(설정 > 가져오기·내보내기)에서 바로 옮기시면 됩니다.")
+    say("   이 프로그램은 엑셀로 내보낼 수 없는 병원이 'DB 구조'만 제출할 때 씁니다.")
     if ask("\n계속하려면 y를 입력하세요", "n").lower() != "y":
         return
     chart = ask("쓰시는 차트 프로그램 이름 (예: 인투벳, 이프렌즈)")
@@ -146,17 +150,14 @@ def main():
     say("미리보기를 엽니다. 보낼 내용을 확인해 주세요.")
     webbrowser.open((folder / "미리보기.html").as_uri())
 
-    if ask("\n확인했으면 y를 입력하세요 — Gmail 쓰기 창과 파일 위치를 엽니다 (보내지 않으려면 n)", "y").lower() == "y":
-        subject = f"[VetChart 베타] 구조 정보 - {chart or '차트'}"
-        body = ("VetChart 베타 참여 신청과 함께 구조 정보 파일을 보냅니다.\n\n"
-                f"- 차트 프로그램: {chart}\n- 병원 이름:\n- 연락처(선택):\n\n"
-                f"※ 첨부: {z.name} (바탕화면에 있습니다 — 이 메일에 끌어다 놓아 주세요)")
-        url = "https://mail.google.com/mail/?" + urllib.parse.urlencode(
-            {"view": "cm", "fs": "1", "to": RECIPIENT, "su": subject, "body": body})
-        webbrowser.open(url)
+    if ask("\n확인했으면 y를 입력하세요 — 제출 양식과 파일 위치를 엽니다 (제출하지 않으려면 n)", "y").lower() == "y":
+        webbrowser.open(SUBMIT_FORM_URL)
         if os.name == "nt":
             os.system(f'explorer /select,"{z}"')
-        say("\nGmail 창에 파일을 끌어다 놓고 [보내기]를 눌러 주세요. 고맙습니다.")
+        say("\n열린 제출 양식(구글폼)에 병원 이름·사업자등록번호·차트 이름을 적고,")
+        say(f"'구조 정보 파일' 칸에 바탕화면의 {z.name} 하나만 올려 주세요. (구글 로그인이 필요합니다)")
+        say("※ 차트 내용(보호자·동물·진료 기록, 엑셀로 내보낸 자료, DB 파일 자체)은 절대 올리지 마세요.")
+        say(f"양식이 열리지 않으면 {BETA_PAGE_URL} 의 '구조 파일 제출'을 이용해 주세요. 고맙습니다.")
     input("\nEnter를 누르면 닫힙니다")
 
 
